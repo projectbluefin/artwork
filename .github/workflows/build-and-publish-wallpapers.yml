@@ -1,0 +1,84 @@
+name: Build and Publish Wallpapers
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'wallpapers/**'
+      - 'package-gnome-wallpapers.sh'
+      - 'Dockerfile'
+      - '.github/workflows/build-and-publish-wallpapers.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  IMAGE_NAME: bluefin-wallpapers-gnome
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Package GNOME wallpapers
+        run: |
+          ./package-gnome-wallpapers.sh dist/gnome
+
+      - name: Verify package contents
+        run: |
+          # Ensure all 12 monthly wallpapers, chicken, and XE are present
+          for i in $(seq -w 1 12); do
+            test -f "dist/gnome/${i}-bluefin.xml" || { echo "Missing ${i}-bluefin.xml"; exit 1; }
+            test -f "dist/gnome/gnome-background-properties/${i}-bluefin.xml" || { echo "Missing properties for ${i}"; exit 1; }
+          done
+          test -f "dist/gnome/11-bluefin-day.svg" || { echo "Missing 11-bluefin-day.svg"; exit 1; }
+          test -f "dist/gnome/11-bluefin-night.svg" || { echo "Missing 11-bluefin-night.svg"; exit 1; }
+          test -f "dist/gnome/chicken.jxl" || { echo "Missing chicken.jxl"; exit 1; }
+          echo "All wallpaper verification checks passed."
+
+      - name: Compute tags
+        id: meta
+        run: |
+          DATE_TAG="v$(date -u +%Y%m%d)"
+          SHA_TAG="${GITHUB_SHA::7}"
+          echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push container image
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
+        id: build_push
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.date_tag }}
+            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha_tag }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@d7d6bc7722e3ded31a7d5272a08c028dfc4d51ab # v3.8.1
+
+      - name: Sign container image
+        run: |
+          cosign sign --yes "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build_push.outputs.digest }}"
