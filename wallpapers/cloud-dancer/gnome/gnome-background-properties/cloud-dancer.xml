@@ -3,8 +3,8 @@
 <wallpapers>
   <wallpaper deleted="false">
     <name>Project Bluefin - Cloud Dancer</name>
-    <filename>~/.local/share/backgrounds/bluefin/duality/cloud-dancer-day.svg</filename>
-    <filename-dark>~/.local/share/backgrounds/bluefin/duality/cloud-dancer-night.svg</filename-dark>
+    <filename>~/.local/share/backgrounds/bluefin/cloud-dancer/cloud-dancer-day.svg</filename>
+    <filename-dark>~/.local/share/backgrounds/bluefin/cloud-dancer/cloud-dancer-night.svg</filename-dark>
     <options>zoom</options>
   </wallpaper>
 </wallpapers>
