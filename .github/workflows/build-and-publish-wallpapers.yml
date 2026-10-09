@@ -7,7 +7,7 @@ on:
     paths:
       - 'wallpapers/**'
       - 'package-gnome-wallpapers.sh'
-      - 'Dockerfile'
+      - 'Containerfile'
       - '.github/workflows/build-and-publish-wallpapers.yml'
   workflow_dispatch:
 
@@ -16,16 +16,25 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
   IMAGE_NAME: bluefin-wallpapers-gnome
+  REGISTRY: ghcr.io
 
 jobs:
-  build-and-publish:
-    runs-on: ubuntu-24.04
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            platform: amd64
+            runner: ubuntu-26.04
+          - arch: aarch64
+            platform: arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
-      id-token: write
 
     steps:
       - name: Checkout repository
@@ -39,7 +48,8 @@ jobs:
 
       - name: Verify package contents
         run: |
-          # Ensure all 12 monthly wallpapers, chicken, and XE are present
+          COUNT=$(find dist/gnome -type f | wc -l)
+          test "$COUNT" -eq 60 || { echo "Expected 60 files, found $COUNT"; exit 1; }
           for i in $(seq -w 1 12); do
             test -f "dist/gnome/${i}-bluefin.xml" || { echo "Missing ${i}-bluefin.xml"; exit 1; }
             test -f "dist/gnome/gnome-background-properties/${i}-bluefin.xml" || { echo "Missing properties for ${i}"; exit 1; }
@@ -47,7 +57,64 @@ jobs:
           test -f "dist/gnome/11-bluefin-day.svg" || { echo "Missing 11-bluefin-day.svg"; exit 1; }
           test -f "dist/gnome/11-bluefin-night.svg" || { echo "Missing 11-bluefin-night.svg"; exit 1; }
           test -f "dist/gnome/chicken.jxl" || { echo "Missing chicken.jxl"; exit 1; }
-          echo "All wallpaper verification checks passed."
+          echo "All wallpaper verification checks passed (60/60 files verified)."
+
+      - name: Build image with Podman
+        run: |
+          sudo podman build \
+            --platform "linux/${{ matrix.platform }}" \
+            --file ./Containerfile \
+            --tag "${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ matrix.platform }}" \
+            .
+
+      - name: Push per-arch image to GHCR
+        if: github.event_name != 'pull_request'
+        id: push
+        uses: projectbluefin/actions/bootc-build/push-image@v1
+        with:
+          image-name: ${{ env.IMAGE_NAME }}
+          tags: "${{ github.sha }}-${{ matrix.platform }}"
+          compression-format: gzip
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save per-arch digest
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p /tmp/digests
+          echo "${{ steps.push.outputs.digest }}" > "/tmp/digests/${{ matrix.platform }}.txt"
+
+      - name: Upload digest artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.platform }}
+          path: /tmp/digests/${{ matrix.platform }}.txt
+
+  manifest:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Download all digest artifacts
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Read per-arch digests
+        id: digests
+        run: |
+          AMD64_DIGEST=$(cat /tmp/digests/amd64.txt)
+          ARM64_DIGEST=$(cat /tmp/digests/arm64.txt)
+          test -n "${AMD64_DIGEST}" || { echo "Missing amd64 digest"; exit 1; }
+          test -n "${ARM64_DIGEST}" || { echo "Missing arm64 digest"; exit 1; }
+          echo "amd64=${AMD64_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "arm64=${ARM64_DIGEST}" >> "$GITHUB_OUTPUT"
 
       - name: Compute tags
         id: meta
@@ -57,28 +124,27 @@ jobs:
           echo "date_tag=${DATE_TAG}" >> "$GITHUB_OUTPUT"
           echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+      - name: Create and push multi-arch manifest
+        id: manifest
+        uses: projectbluefin/actions/bootc-build/create-manifest@v1
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push container image
-        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 # v6.15.0
-        id: build_push
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
+          image-name: ${{ env.IMAGE_NAME }}
           tags: |
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.date_tag }}
-            ${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.sha_tag }}
+            latest
+            ${{ steps.meta.outputs.date_tag }}
+            ${{ steps.meta.outputs.sha_tag }}
+          digests-json: >-
+            {
+              "amd64": "${{ steps.digests.outputs.amd64 }}",
+              "arm64": "${{ steps.digests.outputs.arm64 }}"
+            }
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-
-      - name: Sign container image
-        run: |
-          cosign sign --yes "${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build_push.outputs.digest }}"
+      - name: Sign and publish multi-arch image
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@v1
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          digest: ${{ steps.manifest.outputs.digest }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          certificate-identity-regexp: "https://github.com/projectbluefin/artwork/.github/workflows/"
+          generate-sbom: "false"

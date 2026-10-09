@@ -25,11 +25,10 @@ done
 # 2. Chicken wallpaper
 cp -p "wallpapers/chicken/chicken.jxl" "${DEST}/"
 
-# 3. XE collection (provide both underscore and hyphenated names for backwards compatibility)
+# 3. XE collection
 for xe in clouds foothills red_tulip space_needle sunset; do
     xe_hyphen="${xe//_/-}"
     cp -p "wallpapers/xe-${xe_hyphen}/xe-${xe_hyphen}.jxl" "${DEST}/xe_${xe}.jxl"
-    cp -p "wallpapers/xe-${xe_hyphen}/xe-${xe_hyphen}.jxl" "${DEST}/xe-${xe_hyphen}.jxl"
 done
 
 # 4. GNOME Background Properties
@@ -37,12 +36,5 @@ for f in wallpapers/gnome-background-properties/*.xml; do
     cp -p "$f" "${DEST}/gnome-background-properties/"
 done
 
-# Also generate hyphenated property descriptors for xe-* to maintain full compatibility
-for xe in clouds foothills red_tulip space_needle sunset; do
-    xe_hyphen="${xe//_/-}"
-    sed "s/xe_${xe}\.jxl/xe-${xe_hyphen}.jxl/g" \
-        "wallpapers/gnome-background-properties/xe_${xe}.xml" \
-        > "${DEST}/gnome-background-properties/xe-${xe_hyphen}.xml"
-done
 
 echo "Packaging complete. Total files in ${DEST}: $(find "${DEST}" -type f | wc -l)"
