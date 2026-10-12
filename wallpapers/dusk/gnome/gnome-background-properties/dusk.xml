@@ -3,7 +3,8 @@
 <wallpapers>
   <wallpaper deleted="false">
     <name>Project Bluefin - Dusk</name>
-    <filename>~/.local/share/backgrounds/bluefin/dusk/dusk.xml</filename>
+    <filename>~/.local/share/backgrounds/bluefin/dusk/dusk-day.jxl</filename>
+    <filename-dark>~/.local/share/backgrounds/bluefin/dusk/dusk-night.jxl</filename-dark>
     <options>zoom</options>
     <shade_type>solid</shade_type>
     <pcolor>#464646</pcolor>

@@ -1,0 +1,39 @@
+name: Test Artwork
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install validation tools
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          SUDO=""
+          if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          $SUDO apt-get update
+          $SUDO apt-get install -y --no-install-recommends \
+            ffmpeg \
+            libjxl-tools \
+            librsvg2-bin \
+            poppler-utils \
+            python3
+
+      - name: Test all artwork
+        run: python3 -m unittest -v tests/test_artwork.py
