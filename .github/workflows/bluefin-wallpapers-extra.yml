@@ -1,0 +1,57 @@
+name: Bluefin Wallpapers Extra
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'wallpapers/dusk/**'
+      - 'wallpapers/prey/**'
+      - 'wallpapers/huntress/**'
+      - 'wallpapers/tenacious-pterosaur/**'
+      - 'wallpapers/leaf-collector/**'
+      - 'wallpapers/duality/**'
+      - 'wallpapers/eyes/**'
+      - 'wallpapers/lazy-days/**'
+      - 'package-extra-wallpapers.sh'
+      - '.github/workflows/bluefin-wallpapers-extra.yml'
+  pull_request:
+    paths:
+      - 'package-extra-wallpapers.sh'
+      - '.github/workflows/bluefin-wallpapers-extra.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Package extra wallpapers
+        run: ./package-extra-wallpapers.sh dist/extra
+
+      - name: Publish release
+        # Consumed by the projectbluefin/tap bluefin-wallpapers-extra cask (livecheck on bluefin-extra-v<date>).
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="bluefin-extra-v$(date -u +%Y-%m-%d)"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/extra/bluefin-wallpapers-extra-gnome.tar.zstd --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/extra/bluefin-wallpapers-extra-gnome.tar.zstd \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "Bluefin extra wallpapers (GNOME). Install: brew install --cask projectbluefin/tap/bluefin-wallpapers-extra"
+          fi
