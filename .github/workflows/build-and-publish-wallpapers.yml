@@ -98,6 +98,7 @@ jobs:
       contents: read
       packages: write
       id-token: write
+      attestations: write
     steps:
       - name: Download all digest artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
@@ -139,6 +140,18 @@ jobs:
               "arm64": "${{ steps.digests.outputs.arm64 }}"
             }
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to GHCR for signing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          # Cosign reads Docker-compatible credentials, not Podman's native auth file.
+          mkdir -p "${HOME}/.docker"
+          printf '%s' "${GH_TOKEN}" | podman login "${REGISTRY}" \
+            --username "${GH_ACTOR}" --password-stdin \
+            --compat-auth-file "${HOME}/.docker/config.json"
 
       - name: Sign and publish multi-arch image
         uses: projectbluefin/actions/bootc-build/sign-and-publish@v1
