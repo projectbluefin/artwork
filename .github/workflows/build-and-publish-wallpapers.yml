@@ -70,7 +70,7 @@ jobs:
       - name: Push per-arch image to GHCR
         if: github.event_name != 'pull_request'
         id: push
-        uses: projectbluefin/actions/bootc-build/push-image@41992083f437357010da2ea072ef353d982ae369 # v1
+        uses: projectbluefin/actions/bootc-build/push-image@4d0850f9bcc9d80a6233fd112aa979fc6adceb2a # v1
         with:
           image-name: ${{ env.IMAGE_NAME }}
           tags: "${{ github.sha }}-${{ matrix.platform }}"
@@ -127,7 +127,7 @@ jobs:
 
       - name: Create and push multi-arch manifest
         id: manifest
-        uses: projectbluefin/actions/bootc-build/create-manifest@41992083f437357010da2ea072ef353d982ae369 # v1
+        uses: projectbluefin/actions/bootc-build/create-manifest@4d0850f9bcc9d80a6233fd112aa979fc6adceb2a # v1
         with:
           image-name: ${{ env.IMAGE_NAME }}
           tags: |
@@ -154,7 +154,7 @@ jobs:
             --compat-auth-file "${HOME}/.docker/config.json"
 
       - name: Sign and publish multi-arch image
-        uses: projectbluefin/actions/bootc-build/sign-and-publish@41992083f437357010da2ea072ef353d982ae369 # v1
+        uses: projectbluefin/actions/bootc-build/sign-and-publish@4d0850f9bcc9d80a6233fd112aa979fc6adceb2a # v1
         with:
           image: ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
           digest: ${{ steps.manifest.outputs.digest }}
